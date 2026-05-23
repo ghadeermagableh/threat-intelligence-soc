@@ -8,7 +8,7 @@ This project implements a Threat Intelligence-driven Security Operations
 Center (SOC) using Wazuh as the SIEM platform, integrated with VirusTotal 
 and AbuseIPDB for live IOC enrichment.
 
-## Architecture
+## Methodology
   <img width="975" height="535" alt="image" src="https://github.com/user-attachments/assets/778b3d86-9172-4c15-857d-6f95d31d9229" />
 
 ## Attack Scenarios Simulated
