@@ -1,396 +1,232 @@
-<!-- Local rules -->
+<!--
+  RULE ID MAP
+  ─────────────────────────────────────────────────────────────
+  100500          AI Correlation Engine alert
+  101500          Threat Intelligence — malicious IP match
+
+  101000–101001   Web Discovery (sensitive paths, traversal)
+  101400–101401   Web Discovery (404 threshold correlation)
+
+  101100–101102   SQL Injection (UNION, OR 1=1, encoded chars)
+
+  101200–101202   Privilege Escalation (net user, admins, PS)
+
+  101300–101303   Data Exfiltration (archive, copy, PS, loot)
+
+  101402          Multi-stage: Recon → SQLi
+  101403          Multi-stage: Recon → SQLi → Priv Escalation
+-->
+
+<var name="BAD_PATHS">/admin|/backup|/.git|/config|/phpmyadmin</var>
+<var name="SQL_ENCODED">%27|%23|--|#</var>
+<var name="PS_EXFIL">Invoke-WebRequest|curl|wget|ftp</var>
+<var name="PS_BYPASS">EncodedCommand|bypass|hidden</var>
 
 
-<group name="threat_intelligence,">
+<!--  THREAT INTELLIGENCE  -->
+
+<group name="threat_intelligence">
 
   <rule id="101500" level="14">
-
-    <list field="srcip" lookup="match_key">
-      etc/lists/ioc_list.txt
-    </list>
-
-    <description>
-      Threat Intelligence Match - Malicious IP detected
-    </description>
-
-  </rule>
-
-</group>
-
-<!-- correlation -->
-<!-- 1_Recon Detection -->
-<group name="correlation,attack_chain,">
-  <rule id="101400" level="3">
-
-    <match>404</match>
-
-    <description>
-      Recon Activity - HTTP 404 detected
-    </description>
-
-  </rule>
-
-<!-- 2_Multi Recon Detection -->
-  <rule id="101401" level="12" frequency="10" timeframe="30">
-
-    <if_matched_sid>101400</if_matched_sid>
-
-    <description>
-      Web Discovery Attack Detected
-    </description>
-
+    <list field="srcip" lookup="match_key">etc/lists/ioc_list</list>
+    <description>Threat Intelligence Match - Malicious IP detected</description>
+    <group>gdpr_IV_35.7.d,hipaa_164.312.b,nist_800_53_SI.4,tsc_CC6.1,tsc_CC6.8</group>
     <mitre>
-      <id>T1595</id>
+      <id>T1071</id>
     </mitre>
   </rule>
-<!-- sql after recon -->
-  <rule id="101402" level="13" timeframe="120">
-
-    <if_matched_sid>101401</if_matched_sid>
-
-    <match>UNION SELECT|' OR 1=1</match>
-
-    <description>
-      Multi-stage Attack: Recon followed by SQL Injection
-    </description>
-
-    <mitre>
-      <id>T1190</id>
-    </mitre>
-
-  </rule>
-
-<!-- prev after sql -->
-  <rule id="101403" level="15" timeframe="300">
-
-    <if_matched_sid>100512</if_matched_sid>
-
-    <regex>net user|administrators|powershell</regex>
-
-    <description>
-      Correlated Multi-stage Attack:
-      Recon → SQLi → Privilege Escalation
-    </description>
-
-    <mitre>
-      <id>T1190</id>
-      <id>T1136</id>
-      <id>T1059.001</id>
-    </mitre>
-
-  </rule>
-</group>
-
-
-
-
-<group name="ai_engine">
-
-  <rule id="100500" level="13">
-    <match>AI_ENGINE:</match>
-
-    <description>
-      AI Correlation Engine Detected Possible Attack
-    </description>
-  </rule>
-</group>
-
-
-
-<!-- SQL Injection Detection -->
-<group name="web_attacks,sqli">
-
-  <!-- UNION SELECT -->
-  <rule id="100510" level="13">
-
-    <match>UNION SELECT</match>
-
-    <description>
-      SQL Injection Attempt - UNION SELECT detected
-    </description>
-
-  </rule>
-
-
-  <!-- OR 1=1 -->
-  <rule id="100511" level="13">
-
-    <match>' OR 1=1</match>
-
-    <description>
-      SQL Injection Authentication Bypass Attempt
-    </description>
-
-  </rule>
-
-
-  <!-- SQL Special Characters -->
-  <rule id="100512" level="13">
-
-    <regex>--|%27|%23|#</regex>
-
-    <description>
-      Possible SQL Injection Special Characters Detected
-    </description>
-
-  </rule>
 
 </group>
 
-<!-- ================================================= -->
-<!--        CUSTOM ATTACK DETECTION RULES              -->
-<!-- ================================================= -->
 
 
-
-<!-- ================================================= -->
-<!-- WEB DISCOVERY ATTACKS                             -->
-<!-- ================================================= -->
+<!--  WEB DISCOVERY  -->
 
 <group name="web_discovery,web_attack,recon">
 
-  <!-- Sensitive directory access -->
+  <!-- 1. Single sensitive path access -->
   <rule id="101000" level="10">
-
-    <match>/admin|/backup|/.git|/config|/phpmyadmin</match>
-
-    <description>
-      Web Discovery Attack - Sensitive directory enumeration detected
-    </description>
-
+    <match>$BAD_PATHS</match>
+    <description>Web Discovery - Sensitive directory access detected</description>
     <mitre>
       <id>T1595</id>
     </mitre>
-
   </rule>
-    <!-- Directory traversal -->
+
+  <!-- 2. Directory traversal attempt -->
   <rule id="101001" level="12">
-
-    <match>../|..\\</match>
-
-    <description>
-      Directory Traversal Attempt detected
-    </description>
-
+    <match>../|..\</match>
+    <description>Directory Traversal Attempt detected</description>
     <mitre>
       <id>T1190</id>
     </mitre>
-
   </rule>
 
-<!-- Web Discovery -->
-  <!-- Base 404 detection -->
+
+  
   <rule id="101400" level="3">
-
     <match>404</match>
-
-    <description>
-      HTTP 404 response detected
-    </description>
-
+    <description>HTTP 404 response detected</description>
   </rule>
-<!-- Threshold correlation -->
+
+
   <rule id="101401" level="12" frequency="10" timeframe="30">
-
     <if_matched_sid>101400</if_matched_sid>
-
-    <description>
-      Possible Web Scanning Activity - Multiple 404 requests detected
-    </description>
-
+    <same_source_ip/>
+    <description>Web Discovery Attack - Multiple 404 requests from same IP</description>
     <mitre>
       <id>T1595</id>
     </mitre>
-
   </rule>
+
 </group>
 
 
 
-<!-- ================================================= -->
-<!-- SQL INJECTION ATTACKS                             -->
-<!-- ================================================= -->
+
+<!--  SQL INJECTION    -->
+
 
 <group name="sqli,web_attack">
 
-  <!-- UNION SELECT -->
+  <!-- 1. UNION-based extraction -->
   <rule id="101100" level="13">
-        <match>UNION SELECT</match>
-
-    <description>
-      SQL Injection Attempt - UNION SELECT detected
-    </description>
-
+    <match>UNION SELECT</match>
+    <description>SQL Injection Attempt - UNION SELECT detected</description>
     <mitre>
       <id>T1190</id>
     </mitre>
-
   </rule>
 
-
-  <!-- Authentication bypass -->
+  <!-- 2. Authentication bypass -->
   <rule id="101101" level="14">
-
     <match>' OR 1=1</match>
-
-    <description>
-      SQL Injection Authentication Bypass detected
-    </description>
-
+    <description>SQL Injection - Authentication Bypass Attempt detected</description>
     <mitre>
       <id>T1190</id>
     </mitre>
   </rule>
 
 
-  <!-- Encoded SQL injection -->
   <rule id="101102" level="11">
-
-    <regex>%27|%23|--|#</regex>
-
-    <description>
-      Possible SQL Injection special characters detected
-    </description>
-
+    <regex>$SQL_ENCODED</regex>
+    <description>Possible SQL Injection - Encoded special characters detected</description>
     <mitre>
       <id>T1190</id>
     </mitre>
-
   </rule>
 
 </group>
 
 
-
-<!-- ================================================= -->
-<!-- PRIVILEGE ESCALATION ATTACKS                      -->
-<!-- ================================================= -->
+<!--  PRIVILEGE ESCALATION   -->
 
 <group name="privilege_escalation,windows_attack">
 
-  <!-- New local user creation -->
+  <!-- 1. New local user creation via net user -->
   <rule id="101200" level="12">
-
     <match>net user</match>
-
-    <description>
-      Privilege Escalation - New local user creation detected
-    </description>
-
+    <description>Privilege Escalation - Local user creation attempt detected</description>
     <mitre>
       <id>T1136</id>
     </mitre>
-
   </rule>
 
-
-  <!-- Added to administrators -->
   <rule id="101201" level="15">
-
+    <if_matched_sid>101200</if_matched_sid>
     <match>administrators</match>
-
-    <description>
-      Privilege Escalation - User added to Administrators group
-    </description>
-        <mitre>
+    <description>Privilege Escalation - User added to Administrators group</description>
+    <mitre>
       <id>T1098</id>
     </mitre>
-
   </rule>
 
-
-  <!-- Suspicious PowerShell -->
+  <!-- 3. Suspicious PowerShell execution flags -->
   <rule id="101202" level="13">
-
     <match>powershell</match>
-
-    <regex>EncodedCommand|bypass|hidden</regex>
-
-    <description>
-      Suspicious PowerShell privilege escalation activity detected
-    </description>
-
+    <regex>$PS_BYPASS</regex>
+    <description>Suspicious PowerShell - Execution policy bypass or hidden execution detected</description>
     <mitre>
       <id>T1059.001</id>
     </mitre>
-
   </rule>
 
 </group>
 
 
-
-<!-- ================================================= -->
-<!-- DATA EXFILTRATION ATTACKS                         -->
-<!-- ================================================= -->
+<!--  DATA EXFILTRATION  -->
 
 <group name="data_exfiltration,windows_attack">
 
-  <!-- ZIP archive creation -->
   <rule id="101300" level="12">
-
     <match>Compress-Archive</match>
-        <description>
-      Possible Data Exfiltration - Archive creation detected
-    </description>
-
+    <description>Possible Data Exfiltration - Archive creation via PowerShell detected</description>
     <mitre>
       <id>T1560</id>
     </mitre>
-
   </rule>
 
   <rule id="101303" level="14">
-
+    <if_matched_sid>101300</if_matched_sid>
     <match>loot.zip</match>
-
-    <description>
-      Possible Data Exfiltration - Suspicious archive created
-    </description>
-
+    <description>Data Exfiltration Confirmed - Suspicious archive filename detected</description>
     <mitre>
       <id>T1041</id>
     </mitre>
-
   </rule>
 
-
-
-
-  <!-- Sensitive file copy -->
+  <!-- 3. Sensitive file copy by keyword in filename or path -->
   <rule id="101301" level="11">
-
     <match>copy</match>
-
     <regex>secret|password|confidential|sensitive</regex>
-
-    <description>
-      Possible Sensitive File Copy detected
-    </description>
-
+    <description>Possible Sensitive File Copy detected</description>
     <mitre>
       <id>T1041</id>
     </mitre>
-
   </rule>
 
-
-  <!-- Encoded PowerShell exfil -->
   <rule id="101302" level="14">
-
+    <if_matched_sid>101300</if_matched_sid>
     <match>powershell</match>
-
-    <regex>Invoke-WebRequest|curl|wget|ftp</regex>
-
-    <description>
-      Possible Data Exfiltration via PowerShell detected
-    </description>
-
+    <regex>$PS_EXFIL</regex>
+    <description>Data Exfiltration via PowerShell - Network transfer command detected</description>
     <mitre>
       <id>T1041</id>
     </mitre>
-
   </rule>
 
 </group>
 
+
+
+<!--  MULTI-STAGE ATTACK CORRELATION   -->
+
+
+<group name="correlation,attack_chain">
+
+
+  <rule id="101402" level="13" frequency="1" timeframe="120">
+    <if_matched_sid>101401</if_matched_sid>
+    <same_source_ip/>
+    <match>UNION SELECT|' OR 1=1</match>
+    <description>Multi-stage Attack: Web Discovery followed by SQL Injection detected</description>
+    <mitre>
+      <id>T1595</id>
+      <id>T1190</id>
+    </mitre>
+  </rule>
+
+
+  <rule id="101403" level="15" frequency="1" timeframe="300">
+    <if_matched_sid>101402</if_matched_sid>
+    <same_source_ip/>
+    <regex>net user|administrators|powershell</regex>
+    <description>Correlated Multi-stage Attack: Recon → SQLi → Privilege Escalation detected</description>
+    <mitre>
+      <id>T1595</id>
+      <id>T1190</id>
+      <id>T1068</id>
+    </mitre>
+  </rule>
+
+</group>
