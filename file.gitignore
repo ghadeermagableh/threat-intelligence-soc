@@ -1,0 +1,6 @@
+# Never commit real configs
+ossec.conf.bak
+*.pem
+*.key
+*.crt
+.env
